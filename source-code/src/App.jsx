@@ -122,6 +122,23 @@ function App() {
     setView('faction');
   }
 
+  if (view === 'map') {
+    return (
+      <FullscreenAtlas
+        selectedFaction={selectedFaction}
+        setSelectedFaction={setSelectedFaction}
+        selectedLocation={selectedLocation}
+        setSelectedLocation={setSelectedLocation}
+        combinedCharacters={combinedCharacters}
+        allLocations={allLocations}
+        locationMap={locationMap}
+        onBack={() => setView('faction')}
+        onOpenRoutes={() => setView('routes')}
+        onOpenCharacters={() => setView('characters')}
+      />
+    );
+  }
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -262,6 +279,168 @@ function App() {
           )}
         </aside>
       </div>
+    </div>
+  );
+}
+
+
+function FullscreenAtlas({ selectedFaction, setSelectedFaction, selectedLocation, setSelectedLocation, combinedCharacters, allLocations, locationMap, onBack, onOpenRoutes, onOpenCharacters }) {
+  const [zoom, setZoom] = useState(1.2);
+  const [showMarkers, setShowMarkers] = useState(true);
+  const [showRoutes, setShowRoutes] = useState(true);
+  const [showLabels, setShowLabels] = useState(false);
+  const [showList, setShowList] = useState(true);
+  const [showDrawer, setShowDrawer] = useState(true);
+  const [tooltip, setTooltip] = useState(null);
+  const [focusQuery, setFocusQuery] = useState('');
+
+  const visibleLocations = useMemo(() => {
+    const q = focusQuery.trim().toLowerCase();
+    return allLocations.filter((loc) => {
+      const factionPass = selectedFaction === 'all' || loc.faction === selectedFaction || (loc.faction === 'neutral' && loc.lockedFree);
+      const queryPass = !q || [loc.name, loc.type, loc.desc, FACTIONS[loc.faction]?.name, ...(loc.tags || [])].join(' ').toLowerCase().includes(q);
+      return factionPass && queryPass;
+    });
+  }, [allLocations, selectedFaction, focusQuery]);
+
+  const selectedCharacters = selectedLocation ? combinedCharacters.filter((char) => char.locationId === selectedLocation.id) : [];
+
+  const zoomIn = () => setZoom((value) => Math.min(3.2, Number((value + 0.2).toFixed(1))));
+  const zoomOut = () => setZoom((value) => Math.max(0.7, Number((value - 0.2).toFixed(1))));
+  const resetZoom = () => setZoom(1.15);
+
+  function tooltipMove(event, loc) {
+    const rect = event.currentTarget.closest('.fullscreen-atlas-map')?.getBoundingClientRect();
+    setTooltip({
+      loc,
+      x: rect ? event.clientX - rect.left + 18 : 20,
+      y: rect ? event.clientY - rect.top + 18 : 20,
+    });
+  }
+
+  function routeVisible(route) {
+    if (selectedFaction === 'all') return true;
+    const from = locationMap.get(route.from);
+    const to = locationMap.get(route.to);
+    return from?.faction === selectedFaction || to?.faction === selectedFaction || route.type === 'secret';
+  }
+
+  return (
+    <div className="fullscreen-atlas-shell">
+      <div className="fullscreen-atlas-topbar">
+        <div className="atlas-title-block">
+          <button className="atlas-back-btn" onClick={onBack}>← Kembali</button>
+          <div>
+            <strong>Atlas Besar Nusantara Kaldera</strong>
+            <span>Peta khusus layar penuh · zoom, marker, tooltip, route, dan drawer detail</span>
+          </div>
+        </div>
+
+        <div className="atlas-top-actions">
+          <select value={selectedFaction} onChange={(e) => { setSelectedFaction(e.target.value); setSelectedLocation(null); }}>
+            <option value="all">🌍 Semua Faksi</option>
+            {Object.values(FACTIONS).map((f) => <option key={f.id} value={f.id}>{f.symbol} {f.name}</option>)}
+          </select>
+          <button onClick={onOpenRoutes}>Jalur Strategis</button>
+          <button onClick={onOpenCharacters}>Direktori</button>
+        </div>
+      </div>
+
+      <div className="fullscreen-atlas-map" onMouseLeave={() => setTooltip(null)}>
+        <div className="fullscreen-atlas-canvas" style={{ width: `${zoom * 100}%` }}>
+          <img src="/maps/nusantara-kaldera-atlas.png" alt="Atlas Besar Nusantara Kaldera" draggable="false" />
+
+          {showRoutes && (
+            <svg className="fullscreen-route-layer" viewBox="0 0 100 100" preserveAspectRatio="none">
+              {FORTRESS_ROUTES.filter(routeVisible).map((route) => {
+                const from = locationMap.get(route.from);
+                const to = locationMap.get(route.to);
+                if (!from || !to) return null;
+                const cx = (from.x + to.x) / 2;
+                const cy = (from.y + to.y) / 2 - 4;
+                return (
+                  <g key={route.name} className={`atlas-route ${route.type}`}>
+                    <path d={`M ${from.x} ${from.y} Q ${cx} ${cy} ${to.x} ${to.y}`} vectorEffect="non-scaling-stroke" />
+                    <text x={cx} y={cy - 1.2} textAnchor="middle" dominantBaseline="middle" vectorEffect="non-scaling-stroke">{route.name}</text>
+                  </g>
+                );
+              })}
+            </svg>
+          )}
+
+          {showMarkers && visibleLocations.map((loc) => {
+            const faction = FACTIONS[loc.faction] || FACTIONS.neutral;
+            const selected = selectedLocation?.id === loc.id;
+            const major = ['capital', 'fortress', 'stronghold', 'port'].includes(loc.type);
+            return (
+              <button
+                type="button"
+                key={loc.id}
+                className={`fullscreen-marker ${major ? 'major' : ''} ${selected ? 'selected' : ''}`}
+                style={{ left: `${loc.x}%`, top: `${loc.y}%`, '--faction-color': faction.color }}
+                onMouseMove={(event) => tooltipMove(event, loc)}
+                onMouseLeave={() => setTooltip(null)}
+                onClick={() => { setSelectedLocation(loc); setShowDrawer(true); }}
+              >
+                <span>{loc.icon}</span>
+                {showLabels && <b>{loc.name}</b>}
+              </button>
+            );
+          })}
+
+          {tooltip && (
+            <div className="fullscreen-tooltip" style={{ left: tooltip.x, top: tooltip.y }}>
+              <strong>{tooltip.loc.icon} {tooltip.loc.name}</strong>
+              <span>{FACTIONS[tooltip.loc.faction]?.name || 'Wilayah Bebas'} · {tooltip.loc.type}</span>
+              <p>{tooltip.loc.desc}</p>
+              <small>{tooltip.loc.resources?.slice(0, 4).join(' · ')}</small>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="fullscreen-atlas-controls">
+        <button onClick={zoomOut}>−</button>
+        <button onClick={resetZoom}>{Math.round(zoom * 100)}%</button>
+        <button onClick={zoomIn}>+</button>
+        <button className={showMarkers ? 'active' : ''} onClick={() => setShowMarkers((v) => !v)}>Marker</button>
+        <button className={showRoutes ? 'active' : ''} onClick={() => setShowRoutes((v) => !v)}>Route</button>
+        <button className={showLabels ? 'active' : ''} onClick={() => setShowLabels((v) => !v)}>Label</button>
+        <button className={showList ? 'active' : ''} onClick={() => setShowList((v) => !v)}>List</button>
+      </div>
+
+      {showList && (
+        <aside className="fullscreen-location-list">
+          <div className="list-head">
+            <strong>Lokasi Atlas</strong>
+            <button onClick={() => setShowList(false)}>×</button>
+          </div>
+          <input value={focusQuery} onChange={(e) => setFocusQuery(e.target.value)} placeholder="Cari lokasi..." />
+          <div className="list-scroll">
+            {visibleLocations.map((loc) => {
+              const faction = FACTIONS[loc.faction] || FACTIONS.neutral;
+              return (
+                <button
+                  key={loc.id}
+                  className={selectedLocation?.id === loc.id ? 'active' : ''}
+                  style={{ borderLeftColor: faction.color }}
+                  onClick={() => { setSelectedLocation(loc); setShowDrawer(true); }}
+                >
+                  <b>{loc.icon} {loc.name}</b>
+                  <span>{faction.name} · {loc.type}</span>
+                </button>
+              );
+            })}
+          </div>
+        </aside>
+      )}
+
+      {showDrawer && selectedLocation && (
+        <aside className="fullscreen-detail-drawer">
+          <button className="drawer-close" onClick={() => setShowDrawer(false)}>×</button>
+          <LocationDetail location={selectedLocation} characters={selectedCharacters} onCharacter={() => {}} />
+        </aside>
+      )}
     </div>
   );
 }
