@@ -1,0 +1,28 @@
+# dependencies
+node_modules/
+*/node_modules/
+
+# local env
+.env
+.env.*
+!.env.example
+
+# logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# build cache
+.cache/
+.netlify/
+.vercel/
+
+# source build output; root deploy uses public_site
+source-code/dist/

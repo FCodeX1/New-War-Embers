@@ -1,0 +1,18 @@
+[build]
+  # SAFE MODE: Netlify tidak menjalankan npm install / vite build.
+  # File yang dipublish adalah hasil build static di folder public_site.
+  command = "echo 'Static deploy: no npm install, no vite build'"
+  publish = "public_site"
+
+[build.environment]
+  NODE_VERSION = "20.18.1"
+
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
