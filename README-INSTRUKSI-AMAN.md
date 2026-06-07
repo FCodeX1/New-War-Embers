@@ -1,23 +1,13 @@
-# War of Embers / Nusantara Kaldera - Netlify Safe Package
+# War Embers / Nusantara Kaldera - Atlas Interaktif Final
 
 Paket ini berisi dua bagian:
 
-1. `public_site/` = hasil build static yang langsung dipublish Netlify.
-2. `source-code/` = kode lengkap React/Vite untuk diedit developer.
+- `public_site/` = hasil build static siap Netlify. Tidak perlu npm install.
+- `source-code/` = kode React/Vite untuk edit lokal.
 
-## Deploy GitHub ke Netlify tanpa npm error
+## Deploy Netlify paling aman
 
-Upload seluruh isi folder ini ke GitHub:
-
-```txt
-netlify.toml
-.gitignore
-public_site/
-source-code/
-README-INSTRUKSI-AMAN.md
-```
-
-Netlify akan membaca `netlify.toml` root:
+Upload seluruh isi folder ini ke GitHub. Netlify akan membaca `netlify.toml` root:
 
 ```toml
 [build]
@@ -25,11 +15,13 @@ Netlify akan membaca `netlify.toml` root:
   publish = "public_site"
 ```
 
-Artinya Netlify tidak menjalankan `npm install`, tidak menjalankan `vite build`, dan tidak terkena error `vite: not found`.
+Jadi Netlify tidak akan menjalankan npm install dan tidak akan error `vite: not found`.
 
-## Kalau ingin edit source
+## Drag-and-drop Netlify
 
-Masuk ke folder `source-code/` di komputer lokal:
+Buka folder `public_site/`, lalu drag folder itu ke Netlify Drop.
+
+## Jalankan lokal untuk development
 
 ```bash
 cd source-code
@@ -37,28 +29,13 @@ npm install
 npm run dev
 ```
 
-Setelah edit selesai:
+## Yang baru
 
-```bash
-npm run build
-```
-
-Lalu copy isi `source-code/dist/` ke `public_site/`.
-
-## Fitur update yang ada
-
-- menu Tokoh Ikonik
-- halaman detail panjang karakter ikonik
-- biografi utama
-- drama / arc saat ini
-- rahasia besar
-- psikologi tokoh
-- arc panjang campaign
-- hook adegan khusus
-- kemungkinan ending
-- graph relasi antar tokoh
-- tooltip wilayah di peta
-- jalur strategis ala Romance of Three Kingdoms
-- atlas terrain detail
-- direktori karakter
-- tempat random dan pengembara random per turn
+- Gambar atlas fantasy map asli dipasang sebagai background map utama.
+- Overlay marker wilayah interaktif.
+- Hover marker menampilkan tooltip detail wilayah.
+- Klik marker membuka panel detail kanan.
+- Toggle marker, jalur strategis, label overlay, semua faksi.
+- Zoom in/out/reset.
+- Route layer ala Romance of Three Kingdoms di atas map.
+- Daftar lokasi atlas di samping peta.

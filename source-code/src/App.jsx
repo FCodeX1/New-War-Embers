@@ -567,7 +567,13 @@ function CharactersView({ selectedFaction, setSelectedFaction, query, setQuery, 
 
 function MapView({ selectedFaction, allLocations, locationMap, selectedLocation, setSelectedLocation, setSelectedCharacter, forceAllTerrain = false }) {
   const [tooltip, setTooltip] = useState(null);
-  const visible = forceAllTerrain || selectedFaction === 'all'
+  const [zoom, setZoom] = useState(1);
+  const [showMarkers, setShowMarkers] = useState(true);
+  const [showRoutes, setShowRoutes] = useState(true);
+  const [showLabels, setShowLabels] = useState(false);
+  const [showAll, setShowAll] = useState(forceAllTerrain || selectedFaction === 'all');
+
+  const visible = showAll || forceAllTerrain || selectedFaction === 'all'
     ? allLocations
     : allLocations.filter((loc) => loc.faction === selectedFaction || (loc.faction === 'neutral' && loc.lockedFree));
 
@@ -575,168 +581,136 @@ function MapView({ selectedFaction, allLocations, locationMap, selectedLocation,
     const from = locationMap.get(route.from);
     const to = locationMap.get(route.to);
     if (!from || !to) return false;
-    return selectedFaction === 'all' || from.faction === selectedFaction || to.faction === selectedFaction || route.type === 'secret';
+    return showAll || selectedFaction === 'all' || from.faction === selectedFaction || to.faction === selectedFaction || route.type === 'secret';
   };
 
+  const zoomIn = () => setZoom((value) => Math.min(2.5, Number((value + 0.2).toFixed(1))));
+  const zoomOut = () => setZoom((value) => Math.max(0.7, Number((value - 0.2).toFixed(1))));
+  const resetZoom = () => setZoom(1);
+
+  function tooltipMove(event, loc) {
+    const rect = event.currentTarget.closest('.real-atlas-viewport')?.getBoundingClientRect();
+    setTooltip({
+      loc,
+      x: rect ? event.clientX - rect.left + 18 : 20,
+      y: rect ? event.clientY - rect.top + 18 : 20,
+    });
+  }
+
   return (
-    <section className="card-section map-only">
-      <div className="hero-card compact">
-        <h2>Peta Atlas Kaldera</h2>
-        <p>
-          Versi ini memakai tekstur atlas/medieval: kontur ketinggian, biome, sungai, gunung, hutan, pesisir,
-          jalur dagang/militer, dan jalur strategis ala <b>Romance of Three Kingdoms</b> antar kastil, pelabuhan, benteng, dan wilayah penting.
-        </p>
+    <section className="card-section map-only real-atlas-section">
+      <div className="hero-card compact atlas-hero">
+        <div>
+          <h2>🗺️ Atlas Besar Nusantara Kaldera</h2>
+          <p>
+            Ini memakai <b>gambar peta atlas asli</b> sebagai background utama, lalu ditumpuk layer interaktif: marker wilayah,
+            tooltip, jalur strategis, zoom, dan panel detail. Marker bisa diklik; hover membuka info wilayah.
+          </p>
+        </div>
+        <div className="atlas-controlbar">
+          <button className="secondary" onClick={zoomOut}>− Zoom</button>
+          <button className="secondary" onClick={resetZoom}>{Math.round(zoom * 100)}%</button>
+          <button className="secondary" onClick={zoomIn}>+ Zoom</button>
+        </div>
       </div>
 
-      <div className="map-wrap atlas-wrap" onMouseLeave={() => setTooltip(null)}>
-        {tooltip && (
-          <div className="map-tooltip" style={{ left: tooltip.x + 16, top: tooltip.y + 16 }}>
-            <strong>{tooltip.loc.icon} {tooltip.loc.name}</strong>
-            <span>{FACTIONS[tooltip.loc.faction]?.name || 'Wilayah Bebas'} · {tooltip.loc.type}</span>
-            <p>{tooltip.loc.desc}</p>
-            <small>Resource: {tooltip.loc.resources?.slice(0, 3).join(', ')}</small>
+      <div className="atlas-toolbar">
+        <button className={showMarkers ? 'tool-toggle active' : 'tool-toggle'} onClick={() => setShowMarkers((v) => !v)}>Marker Wilayah</button>
+        <button className={showRoutes ? 'tool-toggle active' : 'tool-toggle'} onClick={() => setShowRoutes((v) => !v)}>Jalur Strategis</button>
+        <button className={showLabels ? 'tool-toggle active' : 'tool-toggle'} onClick={() => setShowLabels((v) => !v)}>Label Overlay</button>
+        <button className={showAll ? 'tool-toggle active' : 'tool-toggle'} onClick={() => setShowAll((v) => !v)}>Semua Faksi</button>
+      </div>
+
+      <div className="real-atlas-layout">
+        <div className="real-atlas-viewport" onMouseLeave={() => setTooltip(null)}>
+          <div className="real-atlas-canvas" style={{ width: `${zoom * 100}%` }}>
+            <img className="real-atlas-image" src="/maps/nusantara-kaldera-atlas.png" alt="Atlas Besar Nusantara Kaldera" draggable="false" />
+
+            {showRoutes && (
+              <svg className="atlas-route-layer" viewBox="0 0 100 100" preserveAspectRatio="none">
+                <defs>
+                  <filter id="routeGlow">
+                    <feDropShadow dx="0" dy="0" stdDeviation="0.8" floodColor="#f7e4a7" floodOpacity="0.8"/>
+                  </filter>
+                </defs>
+                {FORTRESS_ROUTES.filter(routeVisible).map((route) => {
+                  const from = locationMap.get(route.from);
+                  const to = locationMap.get(route.to);
+                  if (!from || !to) return null;
+                  const cx = (from.x + to.x) / 2;
+                  const cy = (from.y + to.y) / 2 - 5;
+                  return (
+                    <g key={`${route.from}-${route.to}-${route.name}`} className={`atlas-route ${route.type}`}>
+                      <path d={`M ${from.x} ${from.y} Q ${cx} ${cy} ${to.x} ${to.y}`} vectorEffect="non-scaling-stroke" />
+                      <text x={cx} y={cy - 1.3} textAnchor="middle" dominantBaseline="middle" vectorEffect="non-scaling-stroke">{route.name}</text>
+                    </g>
+                  );
+                })}
+              </svg>
+            )}
+
+            {showMarkers && visible.map((loc) => {
+              const faction = FACTIONS[loc.faction] || FACTIONS.neutral;
+              const isSelected = selectedLocation?.id === loc.id;
+              const isMajor = ['capital', 'fortress', 'stronghold', 'port'].includes(loc.type);
+              return (
+                <button
+                  key={loc.id}
+                  className={`atlas-marker ${isMajor ? 'major' : ''} ${isSelected ? 'selected' : ''} ${loc.lockedFree ? 'locked' : ''}`}
+                  style={{ left: `${loc.x}%`, top: `${loc.y}%`, '--faction-color': faction.color }}
+                  onClick={() => { setSelectedLocation(loc); setSelectedCharacter(null); }}
+                  onMouseMove={(event) => tooltipMove(event, loc)}
+                  onMouseLeave={() => setTooltip(null)}
+                  aria-label={loc.name}
+                  type="button"
+                >
+                  <span className="marker-ring" />
+                  <span className="marker-icon">{loc.icon}</span>
+                  {showLabels && <span className="marker-label">{loc.name}</span>}
+                </button>
+              );
+            })}
+
+            {tooltip && (
+              <div className="atlas-tooltip" style={{ left: tooltip.x, top: tooltip.y }}>
+                <strong>{tooltip.loc.icon} {tooltip.loc.name}</strong>
+                <span>{FACTIONS[tooltip.loc.faction]?.name || 'Wilayah Bebas'} · {tooltip.loc.type}</span>
+                <p>{tooltip.loc.desc}</p>
+                <small>Resource: {tooltip.loc.resources?.slice(0, 4).join(', ')}</small>
+              </div>
+            )}
           </div>
-        )}
+        </div>
 
-        <svg viewBox="0 0 1200 900" className="kaldera-map atlas-map">
-          <defs>
-            <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
-              <feDropShadow dx="0" dy="3" stdDeviation="5" floodColor="#000" floodOpacity="0.25"/>
-            </filter>
-            <filter id="inkRough">
-              <feTurbulence type="fractalNoise" baseFrequency="0.015" numOctaves="2" result="noise"/>
-              <feDisplacementMap in="SourceGraphic" in2="noise" scale="1.1"/>
-            </filter>
-            <pattern id="paperNoise" width="120" height="120" patternUnits="userSpaceOnUse">
-              <rect width="120" height="120" fill="#eadab0"/>
-              <circle cx="10" cy="20" r="1" fill="#c5b083" opacity="0.45"/>
-              <circle cx="70" cy="34" r="1.2" fill="#c5b083" opacity="0.28"/>
-              <circle cx="110" cy="94" r="1.4" fill="#b89f6d" opacity="0.25"/>
-              <path d="M0 60 C25 54 44 67 60 60 C90 49 100 72 120 64" stroke="#ccb78f" strokeWidth="0.8" fill="none" opacity="0.35"/>
-              <path d="M20 0 C35 34 24 60 42 120" stroke="#dcc896" strokeWidth="0.5" fill="none" opacity="0.22"/>
-            </pattern>
-            <pattern id="seaWaves" width="90" height="48" patternUnits="userSpaceOnUse">
-              <rect width="90" height="48" fill="#7fa2ad"/>
-              <path d="M0 12 C10 4 20 4 30 12 C40 20 50 20 60 12 C70 4 80 4 90 12" stroke="#c4dde3" strokeWidth="2" fill="none" opacity="0.5"/>
-              <path d="M0 32 C10 24 20 24 30 32 C40 40 50 40 60 32 C70 24 80 24 90 32" stroke="#c4dde3" strokeWidth="1.7" fill="none" opacity="0.45"/>
-            </pattern>
-            <pattern id="forestTexture" width="34" height="34" patternUnits="userSpaceOnUse">
-              <rect width="34" height="34" fill="rgba(0,0,0,0)"/>
-              <path d="M8 24 L13 11 L18 24 Z" fill="#49704d" opacity="0.5"/>
-              <path d="M18 28 L23 15 L28 28 Z" fill="#3f6343" opacity="0.45"/>
-            </pattern>
-            <pattern id="reefTexture" width="54" height="54" patternUnits="userSpaceOnUse">
-              <rect width="54" height="54" fill="rgba(0,0,0,0)"/>
-              <circle cx="9" cy="12" r="2" fill="#2e7587" opacity="0.35"/>
-              <circle cx="28" cy="32" r="2.4" fill="#2e7587" opacity="0.3"/>
-              <path d="M3 44 C12 35 22 35 32 44 C42 53 48 47 54 42" stroke="#2e7587" strokeWidth="1" fill="none" opacity="0.4"/>
-            </pattern>
-            <pattern id="mountTexture" width="48" height="32" patternUnits="userSpaceOnUse">
-              <path d="M8 28 L20 10 L32 28 Z" fill="#b09a78" opacity="0.45"/>
-              <path d="M24 28 L34 14 L44 28 Z" fill="#9b8769" opacity="0.42"/>
-            </pattern>
-          </defs>
-
-          <rect x="0" y="0" width="1200" height="900" fill="url(#seaWaves)" />
-          <g opacity="0.35">
-            <path d="M56 86 C138 52 210 52 294 86" className="sea-current"/>
-            <path d="M850 86 C935 46 1035 68 1128 126" className="sea-current"/>
-            <path d="M110 805 C232 760 316 792 440 820" className="sea-current"/>
-            <path d="M780 828 C902 786 1008 792 1146 840" className="sea-current"/>
-          </g>
-
-          <path d="M120 140 C210 74 336 68 440 102 C522 62 672 52 778 87 C905 130 1020 234 1055 338 C1087 436 1068 589 980 692 C894 792 741 838 591 820 C479 842 342 825 242 760 C138 690 86 576 85 468 C84 363 51 228 120 140 Z" fill="url(#paperNoise)" stroke="#69573b" strokeWidth="7" filter="url(#shadow)"/>
-          <path d="M128 145 C220 87 334 86 436 118 C532 80 673 74 780 110 C885 146 998 239 1032 338 C1062 425 1045 576 964 674 C885 769 738 810 594 794 C485 816 360 800 263 740 C168 681 120 575 117 470 C114 360 87 236 128 145 Z" fill="none" stroke="#f8efd3" strokeWidth="2" opacity="0.65"/>
-
-          {CONTOURS.map((path, index) => <path key={`contour-${index}`} d={path} className="contour-line" />)}
-          {BIOME_PATCHES.map((patch, index) => <path key={`biome-${index}`} d={patch.path} className={patch.cls} />)}
-
-          {TERRITORIES.map((territory) => {
-            const faction = FACTIONS[territory.id];
-            return (
-              <g key={territory.id} opacity={selectedFaction === 'all' || selectedFaction === territory.id || (selectedFaction === 'neutral' && territory.id === 'neutral') ? 1 : 0.52}>
-                <path d={territory.path} fill={faction ? faction.color : '#6c7a86'} opacity="0.10" stroke={faction ? faction.color : '#6c7a86'} strokeWidth="3" strokeDasharray="12 5" filter="url(#inkRough)" />
-                <text x={territory.labelX} y={territory.labelY} className="territory-label" fill={faction ? faction.color : '#555'}>{faction ? faction.name : territory.id}</text>
-              </g>
-            );
-          })}
-
-          {RIVERS.map((river, index) => <path key={index} d={river} className="river-line" />)}
-          {MOUNTAINS.map(([x,y], index) => (
-            <g key={`m-${index}`} className="mountain-symbol">
-              <path d={`M${x} ${y+16} L${x+16} ${y-16} L${x+32} ${y+16} Z`} />
-              <path d={`M${x+8} ${y+16} L${x+20} ${y-8} L${x+30} ${y+16} Z`} className="snow" />
-            </g>
-          ))}
-          {FORESTS.map(([x,y], index) => (
-            <g key={`f-${index}`} className="forest-symbol">
-              <path d={`M${x} ${y+18} L${x+10} ${y} L${x+20} ${y+18} Z`} />
-              <path d={`M${x+12} ${y+18} L${x+22} ${y+2} L${x+32} ${y+18} Z`} />
-            </g>
-          ))}
-
-          {ROADS.map(([fromId, toId, roadName]) => {
-            const from = locationMap.get(fromId);
-            const to = locationMap.get(toId);
-            if (!from || !to) return null;
-            const midX = (from.x * 12 + to.x * 12) / 2;
-            const midY = (from.y * 9 + to.y * 9) / 2;
-            return (
-              <g key={`${fromId}-${toId}`}>
-                <line x1={from.x * 12} y1={from.y * 9} x2={to.x * 12} y2={to.y * 9} className="road-line" />
-                <text x={midX} y={midY - 4} className="road-label">{roadName}</text>
-              </g>
-            );
-          })}
-
-          {FORTRESS_ROUTES.filter(routeVisible).map((route) => {
-            const from = locationMap.get(route.from);
-            const to = locationMap.get(route.to);
-            if (!from || !to) return null;
-            const x1 = from.x * 12;
-            const y1 = from.y * 9;
-            const x2 = to.x * 12;
-            const y2 = to.y * 9;
-            const cx = (x1 + x2) / 2;
-            const cy = (y1 + y2) / 2 - 28;
-            return (
-              <g key={`${route.from}-${route.to}-${route.name}`} className={`fortress-route ${route.type}`}>
-                <path d={`M${x1} ${y1} Q${cx} ${cy} ${x2} ${y2}`} />
-                <text x={cx} y={cy - 8}>{route.name}</text>
-              </g>
-            );
-          })}
-
-          {visible.map((loc) => {
-            const faction = FACTIONS[loc.faction] || FACTIONS.neutral;
-            const selected = selectedLocation?.id === loc.id;
-            const px = loc.x * 12;
-            const py = loc.y * 9;
-            const isCastle = ['capital','fortress','stronghold'].includes(loc.type);
-            return (
-              <g
-                key={loc.id}
-                className="map-node"
-                onClick={() => { setSelectedLocation(loc); setSelectedCharacter(null); }}
-                onMouseMove={(event) => setTooltip({ loc, x: event.nativeEvent.offsetX, y: event.nativeEvent.offsetY })}
-                onMouseLeave={() => setTooltip(null)}
-              >
-                {isCastle ? (
-                  <path d={`M${px-12} ${py+10} L${px-12} ${py-8} L${px-6} ${py-8} L${px-6} ${py-14} L${px+1} ${py-14} L${px+1} ${py-8} L${px+8} ${py-8} L${px+8} ${py-14} L${px+14} ${py-14} L${px+14} ${py+10} Z`} fill={loc.lockedFree ? '#324149' : faction.color} stroke={selected ? '#fff' : '#f4eedf'} strokeWidth={selected ? 4 : 2} />
-                ) : (
-                  <circle cx={px} cy={py} r={loc.mobile ? 10 : 8} fill={loc.lockedFree ? '#324149' : faction.color} stroke={selected ? '#fff' : '#f4eedf'} strokeWidth={selected ? 4 : 2} />
-                )}
-                <text x={px} y={py + 4} textAnchor="middle" fontSize="12" fill="#fff">{loc.icon}</text>
-                <text x={px} y={py - 18} textAnchor="middle" className="map-label">{loc.name}</text>
-              </g>
-            );
-          })}
-        </svg>
+        <aside className="atlas-side-list">
+          <h3>Lokasi di Atlas</h3>
+          <p className="muted">Klik nama lokasi untuk memilih marker di peta.</p>
+          <div className="atlas-location-list">
+            {visible.map((loc) => {
+              const faction = FACTIONS[loc.faction] || FACTIONS.neutral;
+              return (
+                <button
+                  key={loc.id}
+                  className={selectedLocation?.id === loc.id ? 'atlas-location-row active' : 'atlas-location-row'}
+                  style={{ borderLeftColor: faction.color }}
+                  onClick={() => setSelectedLocation(loc)}
+                  type="button"
+                >
+                  <b>{loc.icon} {loc.name}</b>
+                  <small>{faction.name} · {loc.type}</small>
+                </button>
+              );
+            })}
+          </div>
+        </aside>
       </div>
 
       <div className="route-ledger">
         <h3>Jalur Strategis ala Romance of Three Kingdoms</h3>
-        <p className="muted">Setiap jalur menghubungkan kastil, benteng, pelabuhan, atau wilayah kunci. Cocok untuk simulasi invasi, diplomasi, suplai, dan perebutan chokepoint.</p>
+        <p className="muted">
+          Jalur ini adalah layer campaign: koridor invasi, suplai, rute bajak laut, front perang, dan jalur artefak.
+          Kamu bisa jadikan ini basis turn-based strategy antar faksi.
+        </p>
         <div className="route-grid">
           {FORTRESS_ROUTES.map((route) => {
             const from = locationMap.get(route.from);
